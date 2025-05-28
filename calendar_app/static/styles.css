@@ -1,0 +1,12 @@
+.out-of-month {
+    color: #999;
+    opacity: 0.5;
+}
+.event-indicator {
+    height: 5px;
+    background: #007bff;
+    margin-top: 5px;
+}
+.modal-header h5 {
+    margin-bottom: 0;
+}
