@@ -11,7 +11,6 @@ VENV_DIR = os.path.join(PROJECT_ROOT, 'venv')
 DOTENV_PATH = os.path.join(PROJECT_ROOT, '.env')
 REQUIREMENTS_PATH = os.path.join(PROJECT_ROOT, 'requirements.txt')
 STATIC_DIR = os.path.join(PROJECT_ROOT, 'calendar_app', 'static')
-STATIC_ROOT = os.path.join(PROJECT_ROOT, 'staticfiles')
 
 def check_venv():
     """Проверяет, запущен ли скрипт внутри виртуального окружения"""
@@ -19,12 +18,12 @@ def check_venv():
 
 def create_virtualenv():
     """Создаёт venv и перезапускает install.py внутри него"""
-    # Создаём venv, если его нет
-    if not os.path.exists(VENV_DIR):
-        print("📁 Создаём виртуальное окружение...")
+    print("📁 Создаём виртуальное окружение...")
+    try:
         subprocess.check_call([sys.executable, '-m', 'venv', VENV_DIR])
-    else:
-        print("📁 Виртуальное окружение уже существует.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Ошибка при создании venv: {e}")
+        sys.exit(1)
 
     # Перезапуск в venv
     if os.name == 'nt':
@@ -35,13 +34,16 @@ def create_virtualenv():
         python_executable = os.path.join(VENV_DIR, 'bin', 'python')
 
     cmd = f'"{python_executable}" "{os.path.abspath(sys.argv[0])}"'
+
+    print("\n🔌 Активируем виртуальное окружение и перезапускаем install.py...")
+
     if os.name == 'nt':
         os.system(f'call "{activate_script}" && {cmd}')
     else:
         os.system(f'source "{activate_script}" && exec {cmd}')
 
     sys.exit(0)
-    
+
 def generate_env_file(db_name, db_user, db_password):
     """Создаёт .env файл с данными пользователя"""
     secret_key = secrets.token_urlsafe(50)
@@ -97,9 +99,8 @@ def setup_database(db_name, db_user, db_password):
             conn.close()
 
 def install_dependencies():
-    """Устанавливает зависимости из requirements.txt в виртуальное окружение"""
+    """Устанавливает зависимости из requirements.txt в venv"""
     pip_path = os.path.join(VENV_DIR, 'Scripts', 'pip') if os.name == 'nt' else os.path.join(VENV_DIR, 'bin', 'pip')
-
     print("📦 Установка зависимостей...")
     try:
         subprocess.check_call([pip_path, 'install', '-r', REQUIREMENTS_PATH])
@@ -114,15 +115,17 @@ def run_migrations():
     try:
         import django
         from django.core.management import call_command
+    except ImportError:
+        print("❌ Не удалось импортировать Django — возможно, зависимости не установлены")
+        sys.exit(1)
 
-        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calendar_project.settings')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'calendar_project.settings')
+    try:
         django.setup()
-
         print("⚙️ Создание миграций...")
         call_command('makemigrations', 'calendar_app')
-
         print("⚙️ Применение миграций...")
-        call_command('migrate') 
+        call_command('migrate')
         print("✅ Все миграции выполнены.")
     except Exception as e:
         print(f"❌ Ошибка при выполнении миграций: {e}")
@@ -130,63 +133,19 @@ def run_migrations():
 
 def collect_static():
     """Собираем статические файлы"""
-    print("📎 Собираем статику...")
-
-    if not os.path.exists(STATIC_DIR):
-        os.makedirs(STATIC_DIR)
-        print(f"📁 Папка {STATIC_DIR} создана для статики.")
+    static_dir = os.path.join(PROJECT_ROOT, 'calendar_app', 'static')
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
+        print(f"📁 Папка {static_dir} создана для статики.")
 
     try:
         import django
         from django.core.management import call_command
-
         django.setup()
         call_command('collectstatic', '--noinput')
         print("✅ Статика собрана.")
     except Exception as e:
         print(f"⚠️ Не удалось собрать статику: {e}")
-
-def check_tables_in_db(db_name, db_user, db_password):
-    """Проверяет, существуют ли нужные таблицы в БД"""
-    print("🔍 Проверяем наличие таблиц в БД...")
-
-    try:
-        import psycopg2
-    except ImportError:
-        print("❌ Для проверки БД нужно установить psycopg2 вручную:")
-        print("   pip install psycopg2-binary")
-        sys.exit(1)
-
-    try:
-        dsn = (
-            f"dbname={db_name} "
-            f"user={db_user} "
-            f"password='{db_password}' "
-            f"host=localhost"
-        )
-        conn = psycopg2.connect(dsn)
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public'
-        """)
-        tables = [t[0] for t in cur.fetchall()]
-        target_tables = ['calendar_app_calendar', 'calendar_app_event']
-
-        missing = [t for t in target_tables if t not in tables]
-        if missing:
-            print(f"❌ Не хватает таблиц: {', '.join(missing)}")
-        else:
-            print("✅ Все таблицы присутствуют в БД:")
-            for table in tables:
-                print(f" - {table}")
-
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print(f"❌ Ошибка при проверке таблиц: {e}")
 
 def main():
     # Переключаем Windows терминал на UTF-8
@@ -215,23 +174,23 @@ def main():
     # Шаг 6: Сборка статики
     collect_static()
 
-    # Шаг 7: Проверка таблиц
-    check_tables_in_db(db_name, db_user, db_password)
-
     print("\n🎉 Установка завершена успешно!")
     print("📌 Теперь вы можете запустить сервер.")
 
-    # Новый шаг: предложить запуск сервера
+    # Шаг 7: Предложить запуск сервера
     while True:
         choice = input("\nЗапустить сервер Django? (y/n): ").strip().lower()
         if choice in ('y', 'yes', 'д', 'да'):
             print("\n🚀 Запуск сервера Django...")
             print("📌 Открываем браузер...")
             webbrowser.open("http://127.0.0.1:8000/create/")
-
-            # Передаём управление напрямую subprocess
-            os.execv(sys.executable, [sys.executable, 'manage.py', 'runserver'])
-
+            try:
+                subprocess.check_call([sys.executable, 'manage.py', 'runserver'])
+            except KeyboardInterrupt:
+                print("\n\n🛑 Сервер остановлен пользователем (Ctrl+C)")
+                print("📌 Чтобы перезапустить сервер позже:")
+                print("   python manage.py runserver")
+            break
         elif choice in ('n', 'no', 'н', 'нет'):
             print("\n📌 Чтобы запустить сервер позже, используйте команду:")
             print("   python manage.py runserver")
@@ -241,13 +200,10 @@ def main():
             print("⚠️ Введите 'y' или 'n'")
 
 if __name__ == "__main__":
-    if not check_venv():
-        create_virtualenv()
-    else:
-        try:
+    try:
+        if not check_venv():
+            create_virtualenv()
+        else:
             main()
-        except KeyboardInterrupt:
-            print("\n\n🛑 Операция прервана пользователем.")
-            print("📌 Чтобы запустить сервер позже, используйте:")
-            print("   python manage.py runserver")
-            sys.exit(0)
+    except KeyboardInterrupt:
+        sys.exit(0)
