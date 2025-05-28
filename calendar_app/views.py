@@ -1,3 +1,5 @@
+# ./calendar_app/views.py
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
