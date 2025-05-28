@@ -1,5 +1,4 @@
-# ./calendar_app/models.py
-
+# calendar_app/models.py
 import uuid
 from django.db import models
 from django.utils import timezone
@@ -12,4 +11,4 @@ class Event(models.Model):
     title = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     date = models.DateField()
-    created_at = models.DateTimeField(auto_now_add=True) 
+    created_at = models.DateTimeField(auto_now_add=True)
