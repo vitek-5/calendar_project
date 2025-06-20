@@ -1,14 +1,14 @@
-# ./calendar_app/views.py
-
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.contrib import messages
+from django.http import JsonResponse, HttpResponseForbidden
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
+from django.utils import timezone
 import calendar as calendar_lib
 from datetime import datetime
 from .models import Calendar, Event
-from django.utils import timezone  # ✅ Используем Django-реализацию
+from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth.decorators import login_required
 
-# Русские названия месяцев и дней
 ru_months = {
     1: 'Январь', 2: 'Февраль', 3: 'Март', 4: 'Апрель',
     5: 'Май', 6: 'Июнь', 7: 'Июль', 8: 'Август',
@@ -16,22 +16,52 @@ ru_months = {
 }
 ru_week_days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
+
+def home(request):
+    calendars = Calendar.objects.all().order_by('-created_at')
+    return render(request, 'home.html', {'calendars': calendars})
+
+
+@csrf_exempt
 def create_calendar(request):
-    calendar = Calendar.objects.create()
-    return redirect('calendar_view', calendar_id=calendar.id)
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        if not name or len(name.strip()) == 0:
+            messages.error(request, "Название календаря обязательно!")
+            return render(request, 'create_calendar.html', {'error': True})
+        calendar = Calendar.objects.create(name=name.strip())
+        return redirect('calendar_view', calendar_id=calendar.id)
+    return render(request, 'create_calendar.html')
+
+
+@csrf_protect
+def enter_calendar(request, calendar_name):
+    try:
+        calendar = Calendar.objects.get(name=calendar_name)
+    except Calendar.DoesNotExist:
+        messages.error(request, "Календарь не найден.")
+        return redirect('home')
+
+    if request.method == 'POST':
+        entered_uuid = request.POST.get('uuid')
+        if str(calendar.id) == entered_uuid:
+            return redirect('calendar_view', calendar_id=calendar.id)
+        else:
+            messages.error(request, "Неверный пароль (UUID).")
+
+    return render(request, 'enter_calendar.html', {'calendar_name': calendar.name})
+
 
 def calendar_view(request, calendar_id, year=None, month=None):
     calendar = get_object_or_404(Calendar, id=calendar_id)
     now = timezone.now()
-
     if not year:
         year = now.year
     if not month:
         month = now.month
-
     try:
         month_dates = calendar_lib.Calendar().monthdatescalendar(year, month)
-    except calendar_lib.IllegalMonthError:
+    except ValueError:
         year = now.year
         month = now.month
         month_dates = calendar_lib.Calendar().monthdatescalendar(year, month)
@@ -54,7 +84,6 @@ def calendar_view(request, calendar_id, year=None, month=None):
     current_page = int(request.GET.get('page', (year - 1900) // years_per_page))
     start_year = 1900 + current_page * years_per_page
     end_year = start_year + years_per_page - 1
-
     years_grid = list(range(start_year, end_year + 1))
     prev_page = current_page - 1 if start_year > 1900 else None
     next_page = current_page + 1 if end_year < 2100 else None
@@ -83,6 +112,29 @@ def calendar_view(request, calendar_id, year=None, month=None):
     }
     return render(request, 'calendar.html', context)
 
+
+@csrf_exempt
+def add_event(request, calendar_id):
+    if request.method == 'POST':
+        calendar = get_object_or_404(Calendar, id=calendar_id)
+        title = request.POST.get('title')
+        description = request.POST.get('description')
+        date_str = request.POST.get('date')
+        try:
+            year, month, day = map(int, date_str.split('-'))
+            date = datetime(year, month, day).date()
+        except ValueError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid date'})
+        Event.objects.create(
+            calendar=calendar,
+            title=title,
+            description=description,
+            date=date
+        )
+        return JsonResponse({'status': 'success'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request'})
+
+
 @csrf_exempt
 def edit_event(request, calendar_id, event_id):
     if request.method == 'POST':
@@ -93,42 +145,6 @@ def edit_event(request, calendar_id, event_id):
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'})
 
-@csrf_exempt
-def add_event(request, calendar_id):
-    if request.method == 'POST':
-        calendar = get_object_or_404(Calendar, id=calendar_id)
-        title = request.POST.get('title')
-        description = request.POST.get('description')
-        date_str = request.POST.get('date')
-
-        try:
-            year, month, day = map(int, date_str.split('-'))
-            date = datetime(year, month, day).date()
-        except ValueError:
-            return JsonResponse({'status': 'error', 'message': 'Invalid date'})
-
-        Event.objects.create(
-            calendar=calendar,
-            title=title,
-            description=description,
-            date=date
-        )
-        return JsonResponse({'status': 'success'})
-    return JsonResponse({'status': 'error', 'message': 'Invalid request'})
-
-@csrf_exempt
-def get_events(request, calendar_id):
-    date_str = request.GET.get('date')
-    try:
-        year, month, day = map(int, date_str.split('-'))
-        date = datetime(year, month, day).date()
-    except (ValueError, TypeError):
-        return JsonResponse({'error': 'Invalid date'}, status=400)
-    
-    calendar = get_object_or_404(Calendar, id=calendar_id)
-    events = Event.objects.filter(calendar=calendar, date=date)
-    events_data = [{'id': e.id, 'title': e.title, 'description': e.description} for e in events]
-    return JsonResponse({'events': events_data})
 
 @csrf_exempt
 def delete_event(request, calendar_id, event_id):
@@ -137,3 +153,26 @@ def delete_event(request, calendar_id, event_id):
         event.delete()
         return JsonResponse({'status': 'success'})
     return JsonResponse({'status': 'error'})
+
+
+@csrf_exempt
+def get_events(request, calendar_id):
+    date_str = request.GET.get('date')
+    try:
+        year, month, day = map(int, date_str.split('-'))
+        date = datetime(year, month, day).date()
+    except ValueError:
+        return JsonResponse({'error': 'Invalid date'}, status=400)
+
+    calendar = get_object_or_404(Calendar, id=calendar_id)
+    events = Event.objects.filter(calendar=calendar, date=date)
+    events_data = [{'id': e.id, 'title': e.title, 'description': e.description} for e in events]
+    return JsonResponse({'events': events_data})
+
+
+@login_required
+def delete_calendar(request, calendar_id):
+    calendar = get_object_or_404(Calendar, id=calendar_id)
+    calendar.delete()
+    messages.success(request, "Календарь успешно удален.")
+    return redirect('home')

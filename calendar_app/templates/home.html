@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Календари</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"  rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <h1 class="mb-4">Созданные календари</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-danger">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Поиск -->
+    <div class="mb-3">
+        <input type="text" id="searchInput" class="form-control" placeholder="Поиск по названию календаря...">
+    </div>
+
+    <!-- Список календарей -->
+    {% if calendars|length == 0 %}
+        <p class="text-muted">Список пуст</p>
+    {% else %}
+        <ul class="list-group mb-4" id="calendarList">
+            {% for calendar in calendars %}
+                <li class="list-group-item calendar-item">
+                    <a href="{% url 'enter_calendar' calendar.name %}" class="text-decoration-none">{{ calendar.name }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <a href="{% url 'create_calendar' %}" class="btn btn-primary">Создать новый календарь</a>
+</body>
+
+<!-- JS для поиска -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('searchInput');
+    const calendarList = document.getElementById('calendarList');
+    const calendarItems = calendarList.getElementsByClassName('calendar-item');
+
+    searchInput.addEventListener('input', function () {
+        const filter = searchInput.value.toLowerCase();
+        Array.from(calendarItems).forEach(function (item) {
+            const text = item.textContent.toLowerCase();
+            item.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+});
+</script>
+</html>
