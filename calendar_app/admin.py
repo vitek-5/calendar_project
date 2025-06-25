@@ -16,3 +16,5 @@ class EventAdmin(admin.ModelAdmin):
     list_display = ('title', 'calendar', 'date')
     list_filter = ('calendar',)
     search_fields = ('title',)
+    
+    

@@ -183,7 +183,7 @@ def main():
         if choice in ('y', 'yes', 'д', 'да'):
             print("\n🚀 Запуск сервера Django...")
             print("📌 Открываем браузер...")
-            webbrowser.open("http://127.0.0.1:8000/create/")
+            webbrowser.open("http://127.0.0.1:8000")
             try:
                 subprocess.check_call([sys.executable, 'manage.py', 'runserver'])
             except KeyboardInterrupt:
@@ -194,7 +194,7 @@ def main():
         elif choice in ('n', 'no', 'н', 'нет'):
             print("\n📌 Чтобы запустить сервер позже, используйте команду:")
             print("   python manage.py runserver")
-            print("🌐 Сервер будет доступен по адресу: http://127.0.0.1:8000/create/")
+            print("🌐 Сервер будет доступен по адресу: http://127.0.0.1:8000")
             break
         else:
             print("⚠️ Введите 'y' или 'n'")
